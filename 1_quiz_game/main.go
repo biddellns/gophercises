@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 type Problem struct {
@@ -17,9 +18,11 @@ type Problem struct {
 }
 
 const DEFAULT_PROBLEMS_FILE = "problems.csv"
+const DEFAULT_TIME_LIMIT = 10
 
 func main() {
 	filename := flag.String("f", DEFAULT_PROBLEMS_FILE, "Specifies the file to pull questions and answers from.")
+	timeLimit := flag.Int("t", DEFAULT_TIME_LIMIT, "Specifies the time limit")
 	flag.Parse()
 
 	p, err := getProblemsFrom(*filename)
@@ -29,23 +32,36 @@ func main() {
 	}
 
 	num_correct := 0
-	num_wrong := 0
 
 	reader := bufio.NewReader(os.Stdin)
-	for _, problem := range p {
-		fmt.Println(problem.Question + "=")
-		a, _ := reader.ReadString('\n')
-		a = strings.TrimSpace(a)
+	timer := time.NewTimer(time.Duration(*timeLimit) * time.Second)
 
-		if a == problem.Answer {
-			num_correct++
-		} else {
-			num_wrong++
+	problemLoop:
+	for i, problem := range p {
+
+		answer := make(chan string)
+
+		go func() {
+			fmt.Printf("Problem #%d: %s = \n", i+1, problem.Question)
+
+			a, _ := reader.ReadString('\n')
+			a = strings.TrimSpace(a)
+			answer <- a
+		}()
+
+		select {
+			case <- timer.C:
+				break problemLoop
+			case userAnswer := <- answer: {
+				if userAnswer == problem.Answer {
+					num_correct++
+				}
+			}
+
 		}
 	}
 
-	fmt.Printf("\n\nCorrect: %v", num_correct)
-	fmt.Printf("\nIncorrect: %v", num_wrong)
+	fmt.Printf("\nYou got %d out of %d correct!\n", num_correct, len(p))
 }
 
 func getProblemsFrom(filename string) (problems []Problem, err error){
